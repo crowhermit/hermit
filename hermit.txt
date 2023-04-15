@@ -1,179 +1,415 @@
-This is an Arduino sketch that controls two stepper motors using the AccelStepper library and an LCD keypad. The motors are connected to pins A1, A2, A3, A4, and A5, and are enabled using the enableOutputs() function. The LCD keypad is connected to the Arduino and is used to input commands for controlling the motors.
-
-The sketch initializes the motors and LCD keypad in the setup() function, and then reads the input from the keypad in the loop() function. The switch statement in the loop() function processes the input from the keypad and updates the speed and direction of the selected motor accordingly.
-
-The refresh() function is called from the switch statement and updates the LCD keypad display with the selected motor, motor speed, and motor direction. The runSpeed() function is used to move the motors one step at a time, and a delay is used to allow time for the motors to move.
-
-Overall, this sketch provides a simple interface for controlling two stepper motors with an LCD keypad and demonstrates how the AccelStepper library can be used to control the speed and direction of the motors.
 #include <AccelStepper.h>
-#include <LCD1602KeyPad.h>
 #include <LiquidCrystal.h>
-// Initialize the LCD keypad object
-LCD1602KeyPad lcd;
+#include <LCDKeypad.h>
 
-// Initialize the stepper motor pins
-const int motor1_step = A1;
-const int motor1_dir = A2;
-const int motor1_enable = A3;
-const int motor2_step = A4;
-const int motor2_dir = A5;
+// Define stepper motor connections and motor interface type.
+#define motorInterfaceType 1
+#define motor1Pin1 10
+#define motor1Pin2 11
+#define motor1Pin3 12
+#define motor1Pin4 13
 
-// Initialize the stepper motor objects
-AccelStepper motor1(AccelStepper::DRIVER, motor1_step, motor1_dir);
-AccelStepper motor2(AccelStepper::DRIVER, motor2_step, motor2_dir);
+#define motor2Pin1 A1
+#define motor2Pin2 A2
+#define motor2Pin3 A3
+#define motor2Pin4 A4
 
-// Initialize variables for motor speed and direction
-int motor1_speed = 0;
-int motor2_speed = 0;
-bool motor1_cw = true;
-bool motor2_cw = true;
+// Define DC motor pin
+#define motorDC 9
 
-int motorspeedratio1 = 15; // zarib motor 1 *********
-int motorspeedratio2 = 5; // zarib motor 2 *********
+// Define motor maximum speed.
+#define maxSpeed 2000
 
-bool selectmotor = true;  //true = motor1 false motor2
+// Define the keypad buttons and LCD.
+LCDKeypad keypad;
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// Define the stepper motors.
+AccelStepper motor1(motorInterfaceType, motor1Pin1, motor1Pin3, motor1Pin2, motor1Pin4);
+AccelStepper motor2(motorInterfaceType, motor2Pin1, motor2Pin3, motor2Pin2, motor2Pin4);
+
+// Define the motor speed and step speed.
+int speed1 = 0;
+int speed2 = 0;
+int stepSpeed = 100;
 
 void setup() {
-  // Initialize the LCD keypad with default pin assignments
-  lcd.begin();
-  // Set the initial direction of the motors
-  motor1.setSpeed(0);
-  motor1.setMaxSpeed(100 * motorspeedratio1);
-  motor2.setSpeed(0);
-  motor2.setMaxSpeed(100 * motorspeedratio2);
+  // Set the maximum speed and acceleration for each motor.
+  motor1.setMaxSpeed(maxSpeed);
+  motor1.setAcceleration(maxSpeed);
+  motor2.setMaxSpeed(maxSpeed);
+  motor2.setAcceleration(maxSpeed);
 
-  // Enable the stepper motors
+  // Enable the stepper motor outputs.
   motor1.enableOutputs();
   motor2.enableOutputs();
 
-  pinMode(motor1_enable, OUTPUT);
+  // Set up the LCD.
+  lcd.begin(16, 2);
 
-  refresh();
+  // Initialize the keypad.
+  keypad.begin();
+
+  // Set the DC motor pin as an output.
+  pinMode(motorDC, OUTPUT);
 }
 
 void loop() {
-  // Read the keypad input and update the motor speed and direction
-  ButtonKey key = lcd.readButtons();
-  switch ( key )
-  {
-    case ButtonKey::NONE:
-      break;
-    case ButtonKey::RIGHT:
-      if (selectmotor) {
-        motor1_speed += 10;
-        if (motor1_speed > 100)
-          motor1_speed = 100;
+  int key = keypad.getKey();
+
+  // If a key is pressed, process the input.
+  if (key != NO_KEY) {
+    switch (key) {
+      case 'A':
+        motor1.setCurrentPosition(0);
+        motor1.setSpeed(speed1);
+        motor1.runSpeed();
+        digitalWrite(motorDC, HIGH);
+        break;
+      case 'B':
+        motor1.setSpeed(speed1);
+        motor1.runSpeed();
+        digitalWrite(motorDC, HIGH);
+        break;
+      case 'C':
+        motor1.setSpeed(-speed1);
+        motor1.runSpeed();
+        digitalWrite(motorDC, LOW);
+        break;
+      case 'D':
+        motor2.setCurrentPosition(0);
+        motor2.setSpeed(speed2);
+        motor2.runSpeed();
+        break;
+      case 'E':
+        motor2.setSpeed(speed2);
+        motor2.runSpeed();
+        break;
+      case 'F':
+        motor2.setSpeed(-speed2);
+        motor2.runSpeed();
+        break;
+      case 'G':
+        speed1 -= stepSpeed;
+        if (speed1 < -maxSpeed) {
+          speed1 = -maxSpeed;
+        }
+        refresh(1);
+        break;
+      case 'H':
+        speed1 += stepSpeed;
+        if (speed1 > maxSpeed) {
+          speed1 = maxSpeed;
+        }
+        refresh(1);
+        break;
+      case 'I':
+        speed2 -= stepSpeed;
+        if (speed2 < -maxSpeed) {
+          speed2 = -maxSpeed;
+        }
+        refresh(2);
+    }
+
+    void moveMotor(int motor, int dir, int steps) {
+      if (motor == 0) {
+        stepper1.setAcceleration(acceleration);
+        stepper1.setSpeed(speed1 * dir);
+        stepper1.move(steps * dir);
+        while (stepper1.distanceToGo() != 0) {
+          stepper1.run();
+          delay(1);
+        }
+      }
+      else if (motor == 1) {
+        stepper2.setAcceleration(acceleration);
+        stepper2.setSpeed(speed2 * dir);
+        stepper2.move(steps * dir);
+        while (stepper2.distanceToGo() != 0) {
+          stepper2.run();
+          delay(1);
+        }
+      }
+    }
+
+    void refresh() {
+      lcd.clear();
+      lcd.print("Motor: ");
+      lcd.print(motorSelect + 1);
+      lcd.setCursor(0, 1);
+      lcd.print("Speed: ");
+      if (motorSelect == 0) {
+        lcd.print(speed1);
       }
       else {
-        motor2_speed += 10;
-        if (motor2_speed > 100)
-          motor2_speed = 100;
+        lcd.print(speed2);
       }
-      refresh();
-      break;
-    case ButtonKey::LEFT:
-      if (selectmotor) {
-        motor1_speed -= 10;
-        if (motor1_speed < 0)
-          motor1_speed = 0;
-      }
-      else {
-        motor2_speed -= 10;
-        if (motor2_speed < 0)
-          motor2_speed = 0;
-      }
-      refresh();
-      break;
-    case ButtonKey::UP:
-      if (selectmotor) {
-        motor1_cw = !motor1_cw;
+      lcd.print(" Dir: ");
+      if (motorSelect == 0) {
+        if (stepper1.distanceToGo() == 0) {
+          lcd.print("Stopped ");
+        }
+        else if (stepper1.distanceToGo() > 0) {
+          lcd.print("FWD ");
+        }
+        else {
+          lcd.print("REV ");
+        }
       }
       else {
-        motor2_cw = !motor2_cw;
+        if (stepper2.distanceToGo() == 0) {
+          lcd.print("Stopped ");
+        }
+        else if (stepper2.distanceToGo() > 0) {
+          lcd.print("FWD ");
+        }
+        else {
+          lcd.print("REV ");
+        }
       }
-      refresh();
-      break;
-    case ButtonKey::DOWN:
-      if (selectmotor) {
-        motor1_speed = 0;
+    }
+    void setup() {
+      // Set the maximum speed and acceleration for each motor.
+      motor1.setMaxSpeed(maxSpeed);
+      motor1.setAcceleration(maxSpeed);
+      motor2.setMaxSpeed(maxSpeed);
+      motor2.setAcceleration(maxSpeed);
+
+      // Enable the stepper motor outputs.
+      motor1.enableOutputs();
+      motor2.enableOutputs();
+
+      // Set up the LCD.
+      lcd.begin(16, 2);
+
+      // Initialize the keypad.
+      keypad.begin();
+      keypad.addEventListener(keypadEvent); // Add an event listener for keypresses
+
+      // Set the DC motor pin as an output.
+      pinMode(motorDC, OUTPUT);
+
+      // Display messages on the LCD.
+      lcd.print(" Motor Control ");
+      delay(1000);
+      lcd.clear();
+      lcd.print("Use Keypad to ");
+      lcd.setCursor(0, 1);
+      lcd.print("control motors ");
+      delay(1000);
+      lcd.clear();
+    }
+
+    //  void setup() {
+    //    lcd.begin(16, 2);
+    //   lcd.print(" Motor Control ");
+    //  delay(1000);
+    //   lcd.clear();
+    //  lcd.print("Use Keypad to ");
+    //  lcd.setCursor(0, 1);
+    //  lcd.print("control motors ");
+    //  delay(1000);
+    //  lcd.clear();
+    //  keypad.addEventListener(keypadEvent); // Add an event listener for keypresses
+    //  stepper1.setMaxSpeed(maxSpeed);
+    //   stepper2.setMaxSpeed(maxSpeed);
+    //   stepper1.setEnablePin(enablePin);
+    //   stepper2.setEnablePin(enablePin);
+    //   stepper1.enableOutputs();
+    //   stepper2.enableOutputs();
+    //  }
+
+    void loop() {
+      int key = keypad.getKey();
+      if (key != NO_KEY) {
+        switch (key) {
+          case 'A':
+            motorSelect = 0;
+            refresh();
+            break;
+          case 'B':
+            motorSelect = 1;
+            refresh();
+            break;
+          case 'C':
+            if (motorSelect == 0) {
+              moveMotor(0, 1, stepDistance);
+            }
+            else {
+              moveMotor(1, 1, stepDistance);
+            }
+            refresh();
+            break;
+          case 'D':
+            if (motorSelect == 0) {
+              moveMotor(0, -1, stepDistance);
+            }
+            else {
+              moveMotor(1, -1, stepDistance);
+            }
+            refresh();
+            break;
+          case 'E':
+            if (motorSelect == 0) {
+              speed1 -= stepSpeed;
+              if (speed1 < minSpeed) {
+                speed1 = minSpeed;
+              }
+            }
+            else {
+              speed2 -= stepSpeed;
+              if (speed2 < minSpeed) {
+                speed2 = minSpeed;
+              }
+            }
+            refresh();
+            break;
+          case 'F':
+            if (motorSelect == 0) {
+              speed1 += stepSpeed;
+              if (speed1
+                case '*':
+                if (motorSelect == 0) {
+                  motorSelect = 1;
+                }
+                else {
+                  motorSelect = 0;
+                }
+            refresh();
+            break;
+          }
       }
-      else {
-        motor2_speed = 0;
+      stepper1.runSpeed();
+        stepper2.runSpeed();
+        delay(1);
       }
-      refresh();
-      break;
-    case ButtonKey::SELECT:
-      selectmotor = !selectmotor;
-      refresh();
-      break;
-  }
 
+      void refresh() {
+        lcd.setCursor(0, 0);
+        lcd.print("Motor: ");
+        lcd.print(motorSelect);
+        lcd.setCursor(0, 1);
+        lcd.print("Speed: ");
+        lcd.print(motorSelect == 0 ? speed1 : speed2);
+        lcd.print("   ");
+        lcd.setCursor(9, 1);
+        lcd.print("Dir: ");
+        lcd.print(motorSelect == 0 ? (dir1 == 1 ? "CW " : "CCW") : (dir2 == 1 ? "CW " : "CCW"));
+      }
 
+      void setDir(int dir) {
+        if (motorSelect == 0) {
+          dir1 = dir;
+          stepper1.setSpeed(speed1 * dir1);
+        }
+        else {
+          dir2 = dir;
+          stepper2.setSpeed(speed2 * dir2);
+        }
+      }
 
+      void setSpeed(int speed) {
+        if (motorSelect == 0) {
+          speed1 = speed;
+          stepper1.setSpeed(speed1 * dir1);
+        }
+        else {
+          speed2 = speed;
+          stepper2.setSpeed(speed2 * dir2);
+        }
+      }
+      void refresh() {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Motor ");
+        lcd.print(motorSelect);
+        lcd.setCursor(0, 1);
+        lcd.print("Speed: ");
+        lcd.print(speed1);
+        lcd.print("   ");
+        lcd.print(dir1 == 1 ? "CW " : "CCW");
+      }
 
+      void runSpeed(int motor, int dir, float spd) {
+        switch (motor) {
+          case 1:
+            stepper1.setSpeed(spd);
+            stepper1.runSpeed();
+            digitalWrite(A5, dir);
+            break;
+          case 2:
+            stepper2.setSpeed(spd);
+            stepper2.runSpeed();
+            digitalWrite(A4, dir);
+            break;
+          case 3:
+            digitalWrite(A5, dir);
+            digitalWrite(A4, dir);
+            break;
+        }
+        delay(50);
+      }
 
-  // Move the motors one step
-  motor1.runSpeed();
-  motor2.runSpeed();
+      void stopMotors() {
+        digitalWrite(A1, LOW);
+        digitalWrite(A2, LOW);
+        digitalWrite(A3, LOW);
+        digitalWrite(A4, LOW);
+        digitalWrite(A5, LOW);
+      }
+      void moveMotor(int motor, int dir, int steps) {
+        if (motor == 0) {
+          motor1.setSpeed(speed1 * dir);
+          motor1.move(steps * dir);
+          while (motor1.distanceToGo() != 0) {
+            motor1.run();
+            delay(1);
+          }
+        }
+        else if (motor == 1) {
+          motor2.setSpeed(speed2 * dir);
+          motor2.move(steps * dir);
+          while (motor2.distanceToGo() != 0) {
+            motor2.run();
+            delay(1);
+          }
+        }
+      }
 
-
-
-  // Delay to allow time for the motors to move
-}
-int refresh() {
-
-  if (motor1_speed == 0)
-    digitalWrite(motor1_enable, HIGH);
-  else
-    digitalWrite(motor1_enable, LOW);
-  // Set the motor speed and direction
-  if (motor1_cw) {
-    motor1.setSpeed(motor1_speed * motorspeedratio1);
-  } else {
-    motor1.setSpeed(-motor1_speed * motorspeedratio1);
-  }
-
-  if (motor2_cw) {
-    motor2.setSpeed(motor2_speed * motorspeedratio2);
-  } else {
-    motor2.setSpeed(-motor2_speed * motorspeedratio2);
-  }
-
-  // Update the LCD keypad display with the selected motor
-  lcd.setCursor(0, 0);
-  lcd.print(selectmotor ? ">" : " ");
-  lcd.setCursor(0, 1);
-  lcd.print(selectmotor ? " " : ">");
-
-  // Update the LCD keypad display with the motor speed
-  lcd.setCursor(1, 0);
-  lcd.print("SM1=");
-  lcd.setCursor(5, 0);
-  lcd.print("    " );
-  lcd.setCursor(5, 0);
-  lcd.print(motor1_speed);
-
-  lcd.setCursor(1, 1);
-  lcd.print("SM2=");
-  lcd.setCursor(5, 1);
-  lcd.print("    ");
-  lcd.setCursor(5, 1);
-  lcd.print(motor2_speed);
-
-  // Update the LCD keypad display with the motor direction
-  lcd.setCursor(13, 0);
-  lcd.print("   ");
-  lcd.setCursor(11, 0);
-  lcd.print(motor1_cw ? "D=CW " : "D=CCW");
-  lcd.setCursor(13, 1);
-  lcd.print("   ");
-  lcd.setCursor(11, 1);
-  lcd.print(motor2_cw ? "D=CW " : "D=CCW");
-  delay(200);
-}
-
-
-
-
-
+      void refresh(int motorSelect) {
+        lcd.clear();
+        lcd.print("Motor: ");
+        lcd.print(motorSelect + 1);
+        lcd.setCursor(0, 1);
+        lcd.print("Speed: ");
+        if (motorSelect == 0) {
+          lcd.print(speed1);
+        }
+        else {
+          lcd.print(speed2);
+        }
+        lcd.print(" Dir: ");
+        if (motorSelect == 0) {
+          if (motor1.distanceToGo() == 0) {
+            lcd.print("Stopped ");
+          }
+          else if (motor1.distanceToGo() > 0) {
+            lcd.print("FWD ");
+          }
+          else {
+            lcd.print("REV ");
+          }
+        }
+        else {
+          if (motor2.distanceToGo() == 0) {
+            lcd.print("Stopped ");
+          }
+          else if (motor2.distanceToGo() > 0) {
+            lcd.print("FWD ");
+          }
+          else {
+            lcd.print("REV ");
+          }
+        }
+      }
 
